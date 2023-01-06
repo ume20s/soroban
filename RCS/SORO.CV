@@ -1,0 +1,1921 @@
+head     1.21;
+access   ;
+symbols  ;
+locks    UME20:1.21;
+comment  @ * @;
+
+
+1.21
+date     91.03.11.21.13.38;
+author   UME20;
+state    Exp;
+branches ;
+next     1.20;
+
+1.20
+date     91.02.21.19.12.42;
+author   UME20;
+state    Exp;
+branches ;
+next     1.12;
+
+1.12
+date     91.02.20.18.26.32;
+author   UME20;
+state    Exp;
+branches ;
+next     1.11;
+
+1.11
+date     91.02.16.16.10.28;
+author   UME20;
+state    Exp;
+branches ;
+next     1.1;
+
+1.1
+date     91.02.14.18.45.48;
+author   UME20;
+state    Exp;
+branches ;
+next     1.0;
+
+1.0
+date     91.02.12.18.26.20;
+author   UME20;
+state    Exp;
+branches ;
+next     0.4;
+
+0.4
+date     91.02.11.09.29.12;
+author   UME20;
+state    Exp;
+branches ;
+next     0.3;
+
+0.3
+date     91.02.10.04.51.24;
+author   UME20;
+state    Exp;
+branches ;
+next     0.2;
+
+0.2
+date     91.02.06.22.36.42;
+author   UME20;
+state    Exp;
+branches ;
+next     0.1;
+
+0.1
+date     91.02.06.19.26.48;
+author   UME20;
+state    Exp;
+branches ;
+next     ;
+
+
+desc
+@デンタク・モードの一応の完成
+@
+
+
+1.21
+log
+@漢字コード故の文字化け対処
+@
+text
+@/*
+ * そろばん [ soro.c ]
+ *      first type  : 1991/02/03
+ */
+
+static char rcsid[]="$Header$";
+
+#include <conio.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include "g_lio.h"
+#include "mouse.h"
+
+#define		ADD		0			/* 計算旗(ﾌﾗｸﾞ)用 */
+#define		SUB		1
+#define		OK		0			/* いろいろと使うと思う */
+#define		NO		1
+
+#define		UE		10			/* お話エリアの上限 */
+
+/*********************************************************************
+ ******* 関数プロトタイプ ********************************************
+ ********************************************************************/
+
+/******* main *******************************************************/
+void	main(int argc,char *argv[]);	/* メイン */
+void	ojiisan(void);					/* デモ・モード */
+void	dentak(void);					/* デンタク・モード */
+void	mouse(void);					/* マウス・モード */
+
+/******* ojiisan ****************************************************/
+void	opening(void);					/* オープニング */
+void	kaisetu(void);					/* 最初の解説 */
+time_t	keisann(void);					/* ネバーエンディング(？)計算 */
+void	ending(time_t end_time);		/* エンディング */
+void	hit_any_key(void);				/* 何かのキーを押してね */
+void	pr_soro(char *moji);			/* スクロールエリア内文字列表示 */
+void	inc_in(int *in,int keta);		/* 入力変数＋＋ */
+void	disp_in(int *in);				/* 入力変数表示 */
+
+/******* den_tak mode ***********************************************/
+void	disp_window(void);				/* デンタク・ウインドウ */
+void	disp_res(int *in,int keta);		/* 入力変数表示 */
+void	seikika(int *in,int keta);		/* 入力数値の正規化 */
+
+/******* ojiisan & den-tak ******************************************/
+void	disp_soro(int suuji,int p);		/* 数値のそろばん表示 */
+int		chk_overflow(int *st,int *in,int cal_flag);	/* 桁あふれチェック */
+void	add_soro(int *st,int in,int p);	/* 指定桁の足し算 */
+void	sub_soro(int *st,int in,int p);	/* 指定桁の引き算 */
+
+/******* general ****************************************************/
+void	set_stop_signal(void);			/* シグナルのセット */
+void	disp_init(int up);				/* そろばんの用意 */
+void	get_tama(void);					/* そろばんの珠取得 */
+void	calc_tamaichi(int up);			/* 珠描画位置計算 */
+void	quit(void);						/* 終了処理 */
+
+void	usage(void);					/* 使い方 */
+void	err_no_memory(void);			/* メモリ足らぬ */
+void	err_signal(void);				/* シグナルおかしい */
+void	err_nandaka(char *mes);			/* なんだかわからない */
+
+/*********************************************************************
+ ******* 広域変数（そろばん関係は面倒だから全部広域変数(汗;) *********
+ ********************************************************************/
+static char	*tama;					/* 珠graphic */
+static char	*boh;					/* 棒graphic */
+static int	leng;					/* graphicの大きさ */
+static int	x[30];					/* 珠描画位置（Ｘ座標）*/
+static int	y_u[2];					/* 珠描画位置（上珠）*/
+static int	y_l[5];					/* 珠描画位置（下珠）*/
+static char pat[] = {0x55,0x55,0x55,0xaa,0xaa,0xaa};
+									/* ペイント用パターン */
+
+/*********************************************************************
+ ******* メイン ******************************************************
+ ********************************************************************/
+void	main(int argc,char *argv[])
+{
+	/* 引数がなければデフォルト動作 */
+	if(argc == 1){
+		ojiisan();
+		/*NOTREACHED*/
+	} else { 
+	/* 引数があれば */
+		++argv;
+		if(**argv == '-'){
+			switch(*(*argv + 1)) {
+				case 'd':				/* デンタク・モード */
+					dentak();
+					/*NOTREACHED*/
+				case 'm':				/* マウス・モード */
+					mouse();
+					/*NOTREACHED*/
+				default:				/* 引数が d,m以外 */
+					usage();
+					/*NOTREACHED*/
+			}
+		} else {
+			usage();					/* 引数はふつー '-'(笑) */
+			/*NOTREACHED*/
+		}
+	}
+}
+
+/*********************************************************************
+ ******* デモンストレーション・モード（デフォルト動作） **************
+ ********************************************************************/
+void	ojiisan(void)
+{
+	time_t	end_time;		/* 実行時間 */
+	
+	printf("\x1b[2J\x1b[>5h\x1b[>1h");
+	opening();							/* そろばん表示前の会話 */
+	kaisetu();							/* そろばんを動かしつつ解説 */
+	end_time = keisann();				/* 計算して実行時間を返す */
+	ending(end_time);					/* お礼と実行時間の表示 */
+	exit(0);
+	/*NOTREACHED*/
+}
+
+/******* オープニング ***********************************************/
+void	opening(void)
+{
+	printf("孫　@「ねぇねぇ，おじいちゃん．」\n");
+	printf("老人「なんぢゃ？」\n\n");
+	hit_any_key();
+	printf("孫　@「“そろばん”ってなーに？」\n");
+	printf("老人「ああ，おまわりさんがいつもいる所ぢゃよ」\n");
+	printf("孫　@「それは“交番”」\n");
+	printf("老人「ん？　@なら，宇宙刑事のことぢゃ．」\n");
+	printf("孫　@「それは“ギャバン”！」\n");
+	printf("老人「おまえが学校へ行くときに持って行く袋の事かの？」\n");
+	printf("孫　@「それは“かばん”！」\n");
+	printf("老人「練習じゃない……」\n");
+	printf("孫　@「それは“本番”！」\n");
+	printf("老人「お店の名前を書いた……．」\n");
+	printf("孫　@「“看板”！」\n");
+	printf("老人「掃除……」\n");
+	printf("孫　@「“当番”！！」\n");
+	printf("老人「夜のあいさつ」\n");
+	printf("孫　@「“こんばんは”！！！」 \n");
+	printf("老人「……」\n");
+	printf("孫　@「……」\n\n");
+	hit_any_key();
+	printf("老人，孫「どうも しつれーしやしたー！！！！」\n\n");
+	hit_any_key();
+	printf("孫　@（おじいちゃん，今回のダジャレはちょっと苦しいよ）\n");
+	printf("老人（うっさいわいっ(笑)）\n\n");
+	hit_any_key();
+	printf("\x1b[3A孫　@「そーじゃなくってー！」　@　@　@　@　@　@　@　@　@　@　@　@　@\n");
+	printf("老人「わかっとるよ，“そろばん”ぢゃろう？\n");
+	printf("　@　@　@そろばんってのはだなぁ，漢字では『算盤』と書いてな，\n");
+	printf("　@　@　@まぁ，一種の計算器の事だわな．」\n");
+	printf("孫　@「へー，計算器ぃ……．」\n");
+	printf("老人「そうぢゃ，そしてこいつに上達すると，\n");
+	printf("　@　@　@なんとコンピュータよりも速く答えを出せるんぢゃ．」\n");
+	printf("孫　@「えぇーーーーっ！？　@コンピュータよりも速くぅ？？？」\n\n");
+	hit_any_key();
+	printf("老人「おぉ，昔はよくテレビで\n");
+	printf("　@　@　@　@　@　@『そろばん対コンピュータ　@宿命の対決！！』\n");
+	printf("　@　@　@などという番組をやっておったもんぢゃ．」\n");
+	printf("孫　@「（ホントかな？(笑)）\n");
+	printf("　@　@　@ねぇねぇ，おじいちゃんはそろばん使ったことある？」\n");
+	printf("老人「ふぉっ ふぉっ ふぉっ(笑)．当然ぢゃよ．\n");
+	printf("　@　@　@昔は『読み書きそろばん』といって学校で習ったもんぢゃが\n");
+	printf("　@　@　@今は違うのかのぉ……．\n");
+	printf("　@　@　@どれ，久しぶりにそろばんを使ってみようか．」\n");
+	printf("孫　@「えっ，おじいちゃん，そろばん持ってるの？\n");
+	printf("　@　@　@すっごいなぁーーーーー！(尊敬)」\n\n");
+	hit_any_key();
+}
+
+/******* そろばんの解説 *********************************************/
+void	kaisetu(void)
+{
+	disp_init(20);				/* そろばん表示 */
+	printf("\x1b[%d;0H\n",UE);
+	pr_soro("老人「これが“そろばん”っちゅうもんぢゃ．」\n");
+	pr_soro("孫　@「あ，これなら見たことがあるよ！\n");
+	pr_soro("　@　@　@テレビの歌合戦の司会者の人が\n");
+	pr_soro("\n");
+	pr_soro("　@　@　@　@　@『ざんす，ざんす，さいざぁんす』\n");
+	pr_soro("\n");
+	pr_soro("　@　@　@とか言って かしゃ かしゃ させてたヨ．\n");
+	pr_soro("　@　@　@へぇー，あれがそろばんだったんだぁ．\n");
+	pr_soro("　@　@　@私，てっきり楽器だと思ってた(笑)．」\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("作者（おいっ，孫っ，お前はいったい何歳なんだ？(汗;)）\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("\x1b[2A老人「そいつはけしからん奴ぢゃ．そろばんはもっと大事に扱わなきゃいかん．\n");
+	pr_soro("　@　@　@それはそうと，そろばんの簡単な使い方を教えてやろう．」\n");
+	pr_soro("孫　@「わーい，教えて教えてー．」\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("老人「まず“そろばんでの数の表\し方”についてぢゃ．\n");
+	pr_soro("　@　@　@まぁ，縦の列が桁を表\していて，\n");
+	pr_soro("　@　@　@右から１の位，１０の位……となっておるのは見当がつくぢゃろ．」\n");
+	pr_soro("孫　@「うん．」\n");
+	pr_soro("老人「で，縦の列を見ると，上と下にわかれていて，\n");
+	pr_soro("　@　@　@上には１個，下には４個の珠（たま）が入っておる．\n");
+	pr_soro("　@　@　@この上の珠が“５”を表\して，下の珠が“１”を表\しておるのぢゃ．\n");
+	pr_soro("　@　@　@そして，５の珠は下に下がった時，１の珠は上に上がったときに\n");
+	pr_soro("　@　@　@その数字が“入った”事になるんぢゃ．」\n");
+	
+	pr_soro("孫　@「？」\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("老人「つまりぢゃな，そろばんの一番右のけたで説明するとぢゃ，\n");
+	pr_soro("　@　@　@今は，５の珠が上になって，１の珠は全部下にあるから\n");
+	pr_soro("　@　@　@何も数字が入っていない，という事で，これは“０”なのぢゃ．\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(1,1);
+	pr_soro("\x1b[1A　@　@　@次にこういうふうに１の珠を１つづつ上げていくと\n");
+	pr_soro("　@　@　@　@“１”\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(2,1);
+	pr_soro("\x1b[2A　@　@　@　@“２”\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(3,1);
+	pr_soro("\x1b[2A　@　@　@　@“３”\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(4,1);
+	pr_soro("\x1b[2A　@　@　@　@“４”\n");
+	pr_soro("　@　@　@と，なっていくわけぢゃ．\n");
+	pr_soro("　@　@　@そして，次の５は\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(5,1);
+	pr_soro("\x1b[1A　@　@　@というふうに１の珠を全部戻して５の珠を下ろすんぢゃ．」\n");
+	pr_soro("孫　@「うーん，なんとなく解ったような解らないような……」\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(0,1);
+	pr_soro("老人「まぁ良い．　@すぐ慣れるぢゃろうて．\n");
+	pr_soro("　@　@　@この数字の表\現方法@が解ると，そろばんでの足し算も簡単に解るんぢゃ．\n");
+	pr_soro("　@　@　@例えば ２４６＋２８３ を計算してみようかの．\n");
+	pr_soro("　@　@　@まず，そろばんに“２４６”という数字をいれると\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(2,3);
+	disp_soro(4,2);
+	disp_soro(6,1);
+	pr_soro("\x1b[1A　@　@　@こうなるぢゃろ．\n");
+	pr_soro("　@　@　@で，こいつに２８３を足すには，頭から１００の位に２，１０の位に８，\n");
+	pr_soro("　@　@　@１の位に３を順番に入れていけばいいのぢゃ．\n");
+	pr_soro("　@　@　@まず１００の位に２を入れるには\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(4,3);
+	pr_soro("\x1b[1A　@　@　@てな具合に下に残っている１の珠を上に上げるんぢゃ．\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("\x1b[1A　@　@　@で，次に１０の位ぢゃが，このままでは８は入らん．\n");
+	pr_soro("　@　@　@そういう場合は仕方がないので，まず頭の中で４＋８を計算するってぇと\n");
+	pr_soro("　@　@　@１２ぢゃろ．\n");
+	pr_soro("　@　@　@だから，この１０の位には２を入れて，\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(2,2);
+	pr_soro("\x1b[1A　@　@　@１００の位に１を加えるんぢゃ．\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(5,3);
+	pr_soro("\x1b[1A　@　@　@最後の１の位の３は，そのままくわえられる，と．\n");
+	pr_soro("\n");
+	hit_any_key();
+	disp_soro(9,1);
+	pr_soro("\x1b[1A　@　@　@そういうわけで，このそろばんの上の数字を読むと\n");
+	pr_soro("　@　@　@５２９という答えがわかるんぢゃ．」\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("孫　@「なんだか，めんどくさいネ．」\n");
+	pr_soro("老人「いや，慣れればなんも考えんでも指が勝手に動くようになるもんぢゃ．\n");
+	pr_soro("　@　@　@試しに，これで１たす２たす３たす……と，ずうっと足し算してみようか？」\n");
+	pr_soro("孫　@「うん，やってやってーーー．」\n");
+	pr_soro("\n");
+	hit_any_key();
+}
+
+/******* ネバーエンディング（？）計算 *******************************/
+time_t	keisann(void)
+{
+	int		st[30],in[30];				/* 演算用配列 */
+	time_t	st_time,end_time;			/* 実行時間計算用 */
+	int		i;							/* 有象無象 */
+	
+	set_stop_signal();					/* 終了用ストップキー対策 */
+	for(i=0; i<25; i++)
+		st[i] = in[i] = 0;
+	printf("\x1b[2J\x1b[%d;0H\n",UE);
+	
+	pr_soro("老人「では，始めるぞ．\n");
+	pr_soro("　@　@　@ご破算で願いましては……．」\n");
+	for(i=4; i>=1; i--){
+		disp_soro(0,i);
+	}
+	pr_soro("孫　@「ねぇねぇ，おじいちゃん，\n");
+	pr_soro("　@　@　@その『ご破算で願いましては』ってどういう意味なの？」\n");
+	pr_soro("老人「ん？これか？　@これはそろばんをまっさらな状態にしてください\n");
+	pr_soro("　@　@　@という意味じゃ．　@まぁ，そろばんで計算を始めるときの\n");
+	pr_soro("　@　@　@決まり文句みたいなもんぢゃ．」\n");
+	pr_soro("孫　@「一休さんがとんちを考えるときの『そもさん』『せっぱ！』\n");
+	pr_soro("　@　@　@みたいなもの？」\n");
+	pr_soro("老人「ちょっと違うんぢゃが，まぁ，同じ様なもんぢゃ\n");
+	pr_soro("\n");
+	hit_any_key();
+	pr_soro("\x1b[1A　@　@　@では，気を取り直して……\n");
+	pr_soro("　@　@　@ご破算で願いましては\n");
+	inc_in(in,1);
+	disp_in(in);
+	pr_soro("円なぁり\n");
+	add_soro(st,in[1],1);
+	inc_in(in,1);
+	disp_in(in);
+	add_soro(st,in[1],1);
+	pr_soro("円なぁり……\n");
+	pr_soro("孫　@「ねぇねぇ，おじいちゃん，\n");
+	pr_soro("　@　@　@どうして『～円なり』って言うの？」\n");
+	pr_soro("老人「ん？　@これも，まぁ，そろばんを使う場合の習慣みたいなもんぢゃ\n");
+	pr_soro("　@　@　@昔は，そろばんは銀行のようなお金を扱うところでよく使われていたから\n");
+	pr_soro("　@　@　@きっと，その名残りぢゃろうて．\n");
+	pr_soro("　@　@　@では，つづきを行くぞ．\n");
+	pr_soro("\n");
+	hit_any_key();
+	
+	time(&st_time);						/* スタート時刻 */
+	for(;;){
+		inc_in(in,1);
+		if(chk_overflow(st,in,ADD) != OK){		/* overflowしたらおしまい */
+			break;
+		}
+		disp_in(in);
+		pr_soro("円なぁり\n");
+		for(i=20; i>0; i--)
+			add_soro(st,in[i],i);
+	}
+	time(&end_time);					/* 終了時刻 */
+	end_time -= st_time;				/* 実行時刻がend_time に入る */
+	pr_soro("\n");	pr_soro("\n");	pr_soro("\n");	pr_soro("\n");
+	pr_soro("　@　@　@……っとぉ，このそろばんではけた数が足りんくて\n");
+	pr_soro("　@　@　@これ以上は計算できんワイ．\n");
+	pr_soro("　@　@　@しかし，お前さんもがんばったのぉ．」\n");
+	pr_soro("\n");
+	hit_any_key();
+	return end_time;
+}
+
+/******* エンディング ***********************************************/
+void	ending(time_t end_time)
+{
+	g_cls();
+	printf("\x1b[>5l\x1b[>1l\x1b[2J\n\n");
+	printf("　@実は，このプログラムは作者もここまで実行した事はありません．\n");
+	printf("　@で，興味のあるのが，このプログラムの実行時間です．\n");
+	printf("　@そこで，あなたにお願いがあるのですが，次に示す実行秒数と\n");
+	printf("　@このプログラムを実行したコンピュータの名前とCPUのクロックを\n");
+	printf("　@作者まで知らせていただけませんか？\n");
+	printf("　@よろしくお願いします．\n\n");
+	printf("　@このプログラムを実行するのに %lu 秒かかりました．\n\n",end_time);
+	printf("　@ここまでこのプログラムにつき合って下さって，");
+	printf("本当にありがとうございました．\n");
+}
+
+/******* 何かのキーを押してください *********************************/
+void	hit_any_key(void)
+{
+	printf("\33[47m--hit any key--\33[m");
+	getch();
+	printf("\r                 \r");
+}
+
+/******* スクロールエリア指定文字列表示 *****************************/
+void	pr_soro(char *moji)
+{
+	/* 要するに mojiを表示してからUE行目を１列消去しているのです */
+	printf("%s\x1b[s\x1b[%d;0H\x1b[2K\x1b[u",moji,UE);
+}
+
+/******* 入力変数＋＋ ***********************************************/
+void	inc_in(int *in,int keta)
+{
+	in[keta]++;
+	if(in[keta] >=10){
+		in[keta] -= 10;
+		inc_in(in,keta+1);
+	}
+}
+
+/******* 入力変数表示 ***********************************************/
+void	disp_in(int *in)
+{
+	int		i,j = 0;			/* 有象無象 */
+	
+	printf("　@　@　@");
+	for(i=20; i>0; i--){
+		if((j == 0) && (in[i] == 0)){
+			continue;
+		} else {
+			j = 1;
+			printf("%d",in[i]);
+		}
+	}
+}
+
+/*********************************************************************
+ ******* デンタク・モード ********************************************
+ ********************************************************************/
+void	dentak(void)
+{
+	int		in[30],st[30];		/* 入力変数，そろばん変数 */
+	int		keta;				/* 入力変数の桁数 */
+	int		cal_flag;			/* 計算旗 */
+	int		ch,i;				/* 有象無象 */
+	
+	for(i=0; i<25; i++)
+		in[i] = st[i] = 0;
+	keta = 0;
+	cal_flag = ADD;
+	
+	disp_init(40);
+	disp_window();
+	printf("\x1b[15;4H　@　@ご破算でぇ～願いましてはぁ～～～　@　@");
+	set_stop_signal();
+	for(;;){
+		ch = getch();
+		switch(ch){
+			case '0':
+				if(keta == 0)	break;
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				if(keta == 20)	break;
+				if(keta == 0){
+					printf("\x1b[15;4H");
+					printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+					printf("\x1b[19;36H　@　@　@　@");
+				}
+				keta++;
+				in[keta] = ch - '0';
+				disp_res(in,keta);
+				break;
+			
+			case 0x08:
+				if(keta == 0)	break;
+				keta--;
+				disp_res(in,keta);
+				break;
+			
+			case '+':
+				if(keta != 0)	break;
+				printf("\x1b[15;4H足しては");
+				printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+				printf("\x1b[19;36H　@　@　@　@　@");
+				cal_flag = ADD;
+				disp_res(in,keta);
+				break;
+			
+			case '-':
+				if(keta != 0)	break;
+				printf("\x1b[15;4H引いては");
+				printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+				printf("\x1b[19;36H　@　@　@　@　@");
+				cal_flag = SUB;
+				disp_res(in,keta);
+				break;
+			
+			case 0x0d:
+			case ' ':
+				if(keta == 0)	break;
+				seikika(in,keta);
+				if(chk_overflow(st,in,cal_flag) != OK){
+					printf("\x1b[15;4H　@　@　@　@");
+					printf("\x1b[17;4H　@　@　@");
+					printf("桁あふれが起こりました．　@　@　@　@　@\a");
+					keta = 0;
+					cal_flag = ADD;
+					break;
+				}
+				if(ch == 0x0d){
+					printf("\x1b[19;38H円なり");
+				} else {
+					printf("\x1b[19;38H円では");
+				}
+				printf("\x1b[15;4H　@　@　@　@");
+				if(cal_flag == ADD){
+					for(i=keta; i>0; i--)
+						add_soro(st,in[i],i);
+				} else {
+					for(i=keta; i>0; i--)
+						sub_soro(st,in[i],i);
+				}
+				cal_flag = ADD;
+				keta = 0;
+				break;
+			
+			case 0x1b:
+				printf("\x1b[15;4H　@　@ご破算でぇ～願いましてはぁ～～～　@　@");
+				printf("\x1b[19;38H　@　@　@");
+				keta = 0;
+				disp_res(in,keta);
+				for(i=20; i>0; i--){
+					st[i] = in[i] = 0;
+					disp_soro(0,i);
+				}
+				break;
+			
+			default:
+				break;
+		}
+	}
+	/*NOTREACHED*/
+}
+
+/******* デンタク・ウインドウ *************************************/
+void	disp_window(void)
+{
+	int		i,j;		/* 有象無象 */
+	
+	/* input window */
+	g_line(  2,204,368,325,7,1);
+	g_line(  2,325,  4,327,7,0);
+	g_line(368,325,370,327,7,0);
+	g_line(368,204,370,206,7,0);
+	g_line(370,206,370,327,7,0);
+	g_line(370,327,  4,327,7,0);
+	g_paint2(10,213,7,pat,6);
+	g_line( 10,212,360,317,0,2);
+	g_line( 10,212,360,317,7,1);
+	g_line( 10,212, 12,214,7,0);
+	g_line( 12,214,360,214,7,0);
+	g_line( 12,214, 12,317,7,0);
+	
+	g_line( 22,274,341,274,7,0);
+	for(i=0; i<=20; i++){
+		j = 22 + (i * 16);
+		g_line(j,272,j,274,7,0);
+	}
+	
+	/* kaisetu */
+	g_line(385,190,637,397,7,1);
+	g_line(637,190,639,192,7,0);
+	g_line(637,397,639,399,7,0);
+	g_line(385,397,387,399,7,0);
+	g_line(639,192,639,399,7,0);
+	g_line(639,399,387,399,7,0);
+	
+	g_paint2(395,192,7,pat,6);
+	g_line(393,198,629,391,0,2);
+	g_line(393,198,629,391,7,1);
+	g_line(393,198,395,200,7,0);
+	g_line(395,200,395,391,7,0);
+	g_line(395,200,629,200,7,0);
+	
+	printf("\x1b[14;51H【キー操作の説明】");
+	printf("\x1b[16;52H［０］～［９］： 数字入力");
+	printf("\x1b[18;52H ［ Ｂ  Ｓ ］ ： １字後退");
+	printf("\x1b[20;52H ［リターン］ ： ～円なり");
+	printf("\x1b[22;52H ［Ｅ Ｓ Ｃ］ ： ご 破 算");
+	printf("\x1b[24;52H ［ＳＴＯＰ］ ：  終　@了");
+}
+
+
+/******* 入力変数表示 ***********************************************/
+void	disp_res(int *in,int keta)
+{
+	int	i;			/* 有象無象 */
+	
+	for(i=20; i>=keta; i--)
+		printf("\x1b[17;%dH　@",(42 - (i * 2)));
+	
+	for(i=keta; i>0; i--){
+		printf("\x1b[17;%dH",(42 - ((keta - i) * 2)));
+		putch(0x82);
+		putch(0x4f + in[i]);
+	}
+}
+
+/******* 入力数値の正規化 *******************************************/
+void	seikika(int *in,int keta)
+{
+	int		i,j;		/* 有象無象 */
+	
+	for(i=keta+1; i<=20; i++)
+		in[i] = 0;
+	
+	if(keta == 0)
+		return;
+	
+	for(i=1; i<(int)((keta/2)+1); i++){
+		j = in[i];
+		in[i] = in[keta - i + 1];
+		in[keta - i + 1] = j;
+	}
+}
+
+/******* こっから下の関数はおじいさんも使うので注意する *************/
+
+/******* 数値のそろばん表示 *****************************************/
+void	disp_soro(int suuji,int p)
+{
+	int		i;		/* 有象無象 */
+	
+	if(p > 20){
+		err_nandaka("数値のそろばん表\示で桁指定が変です");
+		/*NOTREACHED*/
+	}
+	if(suuji >= 5){
+		g_put(x[p],y_u[0],boh,leng,0);
+		g_put(x[p],y_u[1],tama,leng,0);
+		suuji -= 5;
+	} else {
+		g_put(x[p],y_u[0],tama,leng,0);
+		g_put(x[p],y_u[1],boh,leng,0);
+	}
+	for(i=0; i<5; i++){
+		if(i == suuji)
+			g_put(x[p],y_l[i],boh,leng,0);
+		else
+			g_put(x[p],y_l[i],tama,leng,0);
+	}
+}
+
+/******* 桁あふれチェック *******************************************/
+int	chk_overflow(int *st,int *in,int cal_flag)
+{
+	int		i;							/* 有象無象 */
+	static int		stl[30];			/* 局所用配列 */
+	
+	for(i=0; i<=20; i++)
+		stl[i] = st[i];
+	stl[21] = 0;
+	
+	if(cal_flag == ADD){
+		for(i=1; i<=20; i++){
+			stl[i] += in[i];
+			if(stl[i] >= 10){
+				stl[i+1] += 1;
+			}
+		}
+		if(stl[21] != 0){
+			return NO;
+		} else {
+			return OK;
+		}
+	}
+	if(cal_flag == SUB){
+		for(i=1; i<=20; i++){
+			stl[i] -= in[i];
+			if(stl[i] < 0){
+				stl[i+1] -= 1;
+			}
+		}
+		if(stl[21] != 0){
+			return NO;
+		} else {
+			return OK;
+		}
+	}
+	err_nandaka("cal_flag が変です");
+	/*NOTREACHED*/
+}
+
+/******* 指定桁の足し算 *********************************************/
+void	add_soro(int *st,int in,int p)
+{
+	if(p > 20){
+		err_nandaka("足算で桁あふれです");
+		/*NOTREACHED*/
+	}
+	st[p] += in;
+	if(st[p] >= 10){
+		st[p] -= 10;
+		disp_soro(st[p],p);
+		add_soro(st,1,p+1);
+	} else {
+		disp_soro(st[p],p);
+	}
+	return;
+}
+
+/******* 指定桁の引き算 *********************************************/
+void	sub_soro(int *st,int in,int p)
+{
+	if(p > 20){
+		err_nandaka("引き算で桁あふれです");
+		/*NOTREACHED*/
+	}
+	st[p] -= in;
+	if(st[p] < 0){
+		st[p] += 10;
+		disp_soro(st[p],p);
+		sub_soro(st,1,p+1);
+	} else {
+		disp_soro(st[p],p);
+	}
+	return;
+}
+
+/*********************************************************************
+ ******* マウス・モード **********************************************
+ ********************************************************************/
+void	mouse(void)
+{
+	int		mo_x,mo_y,mo_l,mo_r;		/* マウス位置およびボタン状況 */
+	int		i;							/* 有象無象 */
+	
+	if(mo_check() == NO){
+		printf("\n孫　@「マウスモードは");
+		printf("マウスドライバを組み込んでから実行してね．」\n");
+		exit(0);
+	}
+	
+	disp_init(100);
+	mo_disp();
+	mo_l = mo_r = 0;
+	set_stop_signal();
+	for(;;){
+		printf("\r");		/* 情けないけど,これが stopキー対策(汗;) */
+		mo_ichi(&mo_x,&mo_y,&mo_l,&mo_r);
+		if((mo_l == 0) && (mo_r == 0))		continue;
+		if((mo_y < 110) || (mo_y > 212))	continue;
+		mo_x = 20 - (int)((mo_x-20) / 30);
+		if((mo_x < 1) || (mo_x > 20))	continue;
+		if(mo_l == 1){
+			if(mo_y < 138){
+				mo_erase();
+				mo_y = (int)((mo_y - 110) / 14);
+				for(i=0; i<2; i++){
+					if(i == mo_y)
+						g_put(x[mo_x],y_u[i],boh,leng,0);
+					else
+						g_put(x[mo_x],y_u[i],tama,leng,0);
+				}
+				mo_disp();
+			}
+			if(mo_y > 143){
+				mo_erase();
+				mo_y = (int)((mo_y - 143) / 14);
+				for(i=0; i<5; i++){
+					if(i == mo_y)
+						g_put(x[mo_x],y_l[i],boh,leng,0);
+					else
+						g_put(x[mo_x],y_l[i],tama,leng,0);
+				}
+				mo_disp();
+			}
+			continue;
+		}
+		if(mo_r == 1){
+			mo_erase();
+			g_put(x[mo_x],y_u[0],tama,leng,0);
+			g_put(x[mo_x],y_u[1],boh,leng,0);
+			g_put(x[mo_x],y_l[0],boh,leng,0);
+			for(i=1; i<5; i++)
+				g_put(x[mo_x],y_l[i],tama,leng,0);
+			mo_disp();
+			continue;
+		}
+	}
+	/*NOTREACHED*/
+}
+
+
+/*********************************************************************
+ ******* 汎用関数群 **************************************************
+ ********************************************************************/
+
+/******* ストップキーのシグナルセット *******************************/
+void	set_stop_signal(void)
+{
+	if(signal(SIGINT,quit) == (void(*)()) -1)
+		err_signal();
+		/*NOTREACHED*/
+}
+
+/******* 最初のそろばんの表示 ***************************************/
+void	disp_init(int up)
+{
+	int	i,j;			/* 有象無象 */
+	
+	/* 最初の準備 */
+	g_init();
+	g_screen(0,0);
+	g_cls();
+	printf("\x1b[2J\x1b[>5h\x1b[>1h");	/* 画面をきれいにして */
+	get_tama();							/* 珠のイメージ取得 */
+	calc_tamaichi(up);					/* 珠位置計算 */
+	
+	/* そろばんの枠 */
+	g_line(10,up- 4,630,up+122,7,1);
+	g_paint2(20,up+10,7,pat,6);
+	g_line(20,up+10,620,up+ 37,0,2);
+	g_line(20,up+43,620,up+112,0,2);
+	g_line(19,up+ 9,621,up+ 38,7,1);
+	g_line(19,up+42,621,up+113,7,1);
+	g_line( 10,up+122, 10+6,up+122+6,7,0);
+	g_line(630,up+122,630+6,up+122+6,7,0);
+	g_line(630,up-  4,630+6,up-  4+6,7,0);
+	for(i=2; i<=6; i+=2){
+		g_line(630+i,up-  4+i,630+i,up+122+i,7,0);
+		g_line( 10+i,up+122+i,630+i,up+122+i,7,0);
+	}
+	
+	/* 梁 */
+	g_line(19,up+39,621,up+ 41,7,2);
+	for(i=1; i<=20; i++)
+		g_pset(x[i]+15,up+40,0);
+	
+	/* 珠と棒 */
+	for(i=1; i<=20; i++){
+		g_put(x[i],y_u[0],tama,leng,0);
+		g_put(x[i],y_u[1],boh,leng,0);
+		g_put(x[i],y_l[0],boh,leng,0);
+		for(j=1; j<5; j++)
+			g_put(x[i],y_l[j],tama,leng,0);
+	}
+}
+
+/******* そろばんの珠イメージ取得 ***********************************/
+void	get_tama(void)
+{
+	int		i,j;		/* 有象無象 */
+	
+	/* イメージの大きさ */
+	leng = (int)((30+8)/8)*(14+1)*3 + 4;
+	
+	/* イメージ領域の確保*/
+	tama = (char *)malloc(leng);
+	if(tama == NULL)
+		err_no_memory();
+	boh = (char *)malloc(leng);
+	if(boh == NULL)
+		err_no_memory();
+	
+	/* 珠イメージ */
+	for(i=0; i<7; i++){
+		g_line(14-i*2,   i,15+i*2,   i,7,0);
+		g_line(14-i*2,13-i,15+i*2,13-i,7,0);
+		for(j=14-i; j<=15+i*2; j+=2){
+			g_pset(j,   i,0);
+			g_pset(j,13-i,0);
+		}
+		for(j=i; j<=i*2; j++){
+			g_pset(14-j,   i,7);
+			g_pset(15+j,13-i,0);
+		}
+		g_pset(15+i*2,13-i,7);
+	}
+	g_line(8,7,27,7,0,0);
+	
+	g_get(0,0,29,13,tama,leng);
+	g_line(0,0,30,13,0,2);
+	
+	/* 棒イメージ */
+	g_line(14,0,16,13,7,2);
+	for(i=0; i<=13; i+=2)
+		g_pset(16,i,0);
+	g_get(0,0,29,13,boh,leng);
+	g_line(0,0,30,13,0,2);
+}
+
+/******* 珠描画位置計算 *********************************************/
+void	calc_tamaichi(int up)
+{
+	int		i;		/* 有象無象 */
+	
+	for(i=0; i<20; i++)
+		x[20 - i] = 20 + 30 * i;
+	for(i=0; i<2; i++)
+		y_u[i] = up + 10 + (14 * i);
+	for(i=0; i<5; i++)
+		y_l[i] = up + 43 + (14 * i);
+}
+
+/******* 終了処理 ***************************************************/
+void	quit(void)
+{
+	signal(SIGINT,SIG_IGN);
+	if(mo_check() == OK)
+		mo_erase();
+	g_cls();
+	printf("\x1b[>5l\x1b[>1l\x1b[2J");
+	printf("\n\n作者「\"soro.exe\" を使ってくれてありがとう．」\n\n");
+	exit(0);
+	/*NOTREACHED*/
+}
+
+/*********************************************************************
+ ******* 各種エラー処理 **********************************************
+ ********************************************************************/
+
+/******* オプションミス（使い方）************************************/
+void	usage(void)
+{
+	printf("\x1b[>5l\x1b[>1l\x1b[2J\n\n");
+	printf("老人「使い方は soro [-d|-m] ぢゃ．」\n");
+	exit(1);
+	/*NOTREACHED*/
+}
+
+/******* メモリが足りない *******************************************/
+void	err_no_memory(void)
+{
+	printf("\x1b[>5l\x1b[>1l\x1b[2J\n\n");
+	printf("老人「すまんが，メモリが足りのうて実行できんわ．」\n");
+	exit(1);
+	/*NOTREACHED*/
+}
+
+/******* シグナルがセットできない ***********************************/
+void	err_signal(void)
+{
+	printf("\x1b[>5l\x1b[>1l\x1b[2J\n\n");
+	printf("孫　@「どうしてsignal関数でエラーが起こったの？」\n");
+	exit(1);
+	/*NOTREACHED*/
+}
+
+/******* なんだかわからない *****************************************/
+void	err_nandaka(char *mes)
+{
+	printf("\x1b[>5l\x1b[>1l\x1b[2J\n\n");
+	printf("作者「%s．」\a\n",mes);
+	exit(1);
+	/*NOTREACHED*/
+}
+@
+
+
+1.20
+log
+@蓬さんから正常動作の報告後，signal関数のポインタの不整合を修正
+CP-Net & NIF へリリース第２弾
+@
+text
+@d201 2
+a202 2
+	pr_soro("老人「まず“そろばんでの数の表し方”についてぢゃ．\n");
+	pr_soro("　@　@　@まぁ，縦の列が桁を表していて，\n");
+d207 1
+a207 1
+	pr_soro("　@　@　@この上の珠が“５”を表して，下の珠が“１”を表しておるのぢゃ．\n");
+d245 1
+a245 1
+	pr_soro("　@　@　@この数字の表現方法@が解ると，そろばんでの足し算も簡単に解るんぢゃ．\n");
+d620 1
+a620 1
+		err_nandaka("数値のそろばん表示で桁指定が変です");
+@
+
+
+1.12
+log
+@ATOKで１発ハングの報告後の修正
+メッセージも若干変更
+蓬さんへＭａｉｌ，結果待ち
+@
+text
+@d787 1
+a787 1
+	if(signal(SIGINT,quit) == (int(*)()) -1)
+@
+
+
+1.11
+log
+@WXP上でのハングアップへの対処．
+完全モノクロ化
+@
+text
+@d36 2
+a37 2
+long	keisann(void);					/* ネバーエンディング(？)計算 */
+void	ending(long end_time);			/* エンディング */
+d64 1
+a64 1
+void	err_nandaka(void);				/* なんだかわからない */
+d94 1
+a94 1
+					break;
+d97 2
+a98 2
+					break;
+				default:
+d103 1
+a103 1
+			usage();
+d114 1
+a114 1
+	long	end_time;		/* 実行時間 */
+d117 4
+a120 4
+	opening();
+	kaisetu();
+	end_time = keisann();
+	ending(end_time);
+d180 1
+a180 1
+	disp_init(20);
+d291 1
+a291 1
+long	keisann(void)
+d297 1
+a297 1
+	set_stop_signal();
+d339 1
+a339 1
+		if(chk_overflow(st,in,ADD) != OK){
+d347 2
+a348 2
+	time(&end_time);
+	end_time -= st_time;
+d359 2
+a360 3
+void	ending(long end_time)
+{
+	signal(SIGINT,SIG_IGN);
+d369 3
+a371 2
+	printf("　@このプログラムを実行するのに %ld 秒かかりました．\n\n",end_time);
+	printf("　@ここまでこのプログラムにつき合って下さって，本当にありがとうございました．\n");
+d385 1
+a424 1
+	set_stop_signal();
+d433 1
+d556 20
+a575 20
+	g_line(378,190,630,397,7,1);
+	g_line(630,190,632,192,7,0);
+	g_line(630,397,632,399,7,0);
+	g_line(378,397,380,399,7,0);
+	g_line(632,192,632,399,7,0);
+	g_line(632,399,380,399,7,0);
+	
+	g_paint2(385,192,7,pat,6);
+	g_line(386,198,622,391,0,2);
+	g_line(386,198,622,391,7,1);
+	g_line(386,198,388,200,7,0);
+	g_line(388,200,388,391,7,0);
+	g_line(388,200,622,200,7,0);
+	
+	printf("\x1b[14;50H【キー操作の説明】");
+	printf("\x1b[16;51H［０］～［９］： 数字入力");
+	printf("\x1b[18;51H ［ Ｂ  Ｓ ］ ： １字後退");
+	printf("\x1b[20;51H ［リターン］ ： ～円なり");
+	printf("\x1b[22;51H ［Ｅ Ｓ Ｃ］ ： ご 破 算");
+	printf("\x1b[24;51H ［ＳＴＯＰ］ ：  終　@了");
+d619 4
+d675 1
+a675 3
+	printf("どうしてこんなメッセージが出力されるの？\n");
+	printf("不思議だと思わない？\n\n\n");
+	err_nandaka();
+d682 4
+d700 4
+d724 2
+a725 1
+		printf("\nマウスモードはマウスドライバを組み込んでから実行してね．\n");
+a728 1
+	set_stop_signal();
+d732 1
+d841 1
+a841 1
+	leng = ((30+7)/8) * 14 * 3 + 4;
+d899 1
+a899 1
+	printf("\n\n\"soro.exe\" を使ってくれてありがとう．\n\n");
+d912 1
+a912 1
+	printf("usage : soro [-d|-m]\n");
+d921 1
+a921 1
+	printf("soro : メモリが足りません\n");
+d930 1
+a930 1
+	printf("soro : 何故か知りませんがsignal関数で不具合が起きました\n");
+d936 1
+a936 1
+void	err_nandaka(void)
+d939 1
+a939 1
+	printf("soro : なんだかわからないエラー\a\n");
+@
+
+
+1.1
+log
+@原因不明の暴走バグ修正？
+@
+text
+@d69 2
+a70 2
+static int	*tama;					/* 珠graphic */
+static int	*boh;					/* 棒graphic */
+a71 1
+
+d75 2
+d298 1
+a298 1
+	for(i=0; i<30; i++)
+d425 1
+a425 1
+	for(i=0; i<30; i++)
+d488 2
+a489 3
+					printf("\x1b[17;4H\x1b[17m　@　@　@");
+					printf("桁あふれが起こりました．");
+					printf("　@　@　@　@　@\a\x1b[m");
+d535 14
+a548 5
+	g_line( 8,210,362,319,4,2);
+	g_line( 9,211,361,318,5,2);
+	g_line(10,212,360,317,1,2);
+	
+	g_line(23,274,343,274,0,0);
+d550 2
+a551 2
+		j = 23 + (i * 16);
+		g_line(j,272,j,274,0,0);
+d555 14
+a568 3
+	g_line(384,192,639,399,4,2);
+	g_line(385,193,638,398,5,2);
+	g_line(386,194,637,397,1,2);
+d570 5
+a574 5
+	printf("\x1b[16;52H［０］～［９］ ： 数字入力");
+	printf("\x1b[18;52H ［ Ｂ  Ｓ ］  ： １字後退");
+	printf("\x1b[20;52H ［リターン］  ： ～円なり");
+	printf("\x1b[22;52H ［Ｅ Ｓ Ｃ］  ： ご 破 算");
+	printf("\x1b[24;52H ［ＳＴＯＰ］  ：  終　@了 ");
+a783 1
+	static char pat[] = {0xaa,0xaa,0xaa,0x55,0x55,0x55};
+d832 1
+a832 1
+	tama = (int *)malloc(leng);
+d835 1
+a835 1
+	boh = (int *)malloc(leng);
+d899 1
+d908 1
+d917 1
+d926 1
+@
+
+
+1.0
+log
+@CP-NET および Nifty リリースバージョン
+@
+text
+@d424 1
+a424 1
+	for(i=0; i<=30; i++)
+@
+
+
+0.4
+log
+@グラフィックの強化
+加算モードの見直し
+@
+text
+@d584 1
+a584 1
+	for(i=1; i<=(int)((keta/2)+1); i++){
+d650 2
+a651 3
+	printf("え？どうして？\n\n\n");
+	printf("ここはどこ？　@わたしはだぁれ？\n");
+	printf("わたし，どうしてこんなところにいるのかしら？\n\n\n");
+d764 1
+d775 2
+a776 2
+	g_line( 9,up- 4,631,up+123,2,2);
+	g_line(10,up   ,630,up+122,6,2);
+d779 9
+a787 2
+	g_line(19,up+ 9,621,up+ 38,2,1);
+	g_line(19,up+42,621,up+113,1,1);
+d790 1
+a790 1
+	g_line(20,up+39,620,up+ 41,7,2);
+d822 2
+a823 2
+		g_line(14-i*2,   i,15+i*2,   i,6,0);
+		g_line(14-i*2,13-i,15+i*2,13-i,6,0);
+d825 2
+a826 2
+			g_pset(j,   i,2);
+			g_pset(j,13-i,2);
+d830 5
+a834 4
+			g_pset(15+j,13-i,2);
+		}
+	}
+	g_line(8,7,27,7,2,0);
+d840 3
+a842 2
+	g_line(14,0,16,13,6,2);
+	g_line(16,0,16,13,2,0);
+@
+
+
+0.3
+log
+@デモンストレーションモードの追加
+@
+text
+@d55 1
+d73 3
+a75 3
+static int	x[30];			/* 珠描画位置（Ｘ座標）*/
+static int	y_u[2];			/* 珠描画位置（上珠）*/
+static int	y_l[5];			/* 珠描画位置（下珠）*/
+d114 1
+d133 2
+a134 2
+	printf("老人「ん？　@なら，門の番人のことぢゃ．」\n");
+	printf("孫　@「それは“門番”！」\n");
+d137 1
+a137 1
+	printf("老人「練習でない……」\n");
+d163 1
+a163 1
+	printf("　@　@　@　@　@　@『そろばん対コンピュータ　@世紀の対決！！』\n");
+d195 1
+a195 3
+	printf("\x1b[2A");
+	pr_soro("老人「そいつはけしからん奴ぢゃ．");
+	pr_soro("そろばんはもっと大事に扱わなきゃいかん．\n");
+a217 1
+	printf("\x1b[1A");
+d219 1
+a219 1
+	pr_soro("　@　@　@次にこういうふうに１の珠を１つづつ上げていくと\n");
+a222 1
+	printf("\x1b[2A");
+d224 1
+a224 1
+	pr_soro("　@　@　@　@“２”\n");
+a226 1
+	printf("\x1b[2A");
+d228 1
+a228 1
+	pr_soro("　@　@　@　@“３”\n");
+a230 1
+	printf("\x1b[2A");
+d232 1
+a232 1
+	pr_soro("　@　@　@　@“４”\n");
+a236 1
+	printf("\x1b[1A");
+d238 1
+a238 1
+	pr_soro("　@　@　@というふうに１の珠を全部戻して５の珠を下ろすんぢゃ．」\n");
+d242 1
+a244 1
+	disp_soro(0,1);
+a248 1
+	printf("\x1b[1A");
+d252 1
+a252 1
+	pr_soro("　@　@　@こうなるぢゃろ．\n");
+a257 1
+	printf("\x1b[1A");
+d259 1
+a259 1
+	pr_soro("　@　@　@てな具合に下に残っている１の珠を上に上げるんぢゃ．\n");
+d262 1
+a262 2
+	printf("\x1b[1A");
+	pr_soro("　@　@　@で，次に１０の位ぢゃが，このままでは８は入らん．\n");
+a267 1
+	printf("\x1b[1A");
+d269 1
+a269 1
+	pr_soro("　@　@　@１００の位に１を加えるんぢゃ．\n");
+a271 1
+	printf("\x1b[1A");
+d273 1
+a273 1
+	pr_soro("　@　@　@最後の１の位の３は，そのままくわえられる，と．\n");
+a275 1
+	printf("\x1b[1A");
+d277 1
+a277 1
+	pr_soro("　@　@　@そういうわけで，このそろばんの上の数字を読むと\n");
+d296 1
+a296 6
+	/* シグナルの処理 */
+	if(signal(SIGINT,quit) == (int(*)()) -1){
+		err_signal();
+		/*NOTREACHED*/
+	}
+	
+d316 1
+a316 1
+	pr_soro("　@　@　@では，気を取り直して……\n");
+d321 1
+a321 1
+	add_soro(st,1,1);
+d324 1
+a325 1
+	add_soro(st,2,1);
+d369 1
+a369 4
+	hit_any_key();
+	printf("　@このプログラムを実行するのに [ %ld ] 秒",end_time);
+	printf("　@かかりました\n\n");
+	hit_any_key();
+d423 1
+a423 6
+	/* シグナルの処理 */
+	if(signal(SIGINT,quit) == (int(*)()) -1){
+		err_signal();
+		/*NOTREACHED*/
+	}
+	
+a525 4
+	printf("僕はどうしてこんな所へ来てしまったのだろう……\n");
+	printf("不思議だ……\n\n");
+	printf("そしぃ～～てぇ～～ボクはとほ～～にぃ～くれる....\n\n\n");
+	err_nandaka();
+d694 1
+a694 1
+		printf("マウスモードはマウスドライバを組み込んでから実行してね．\n");
+d698 1
+a698 5
+	/* シグナルの処理 */
+	if(signal(SIGINT,quit) == (int(*)()) -1){
+		err_signal();
+		/*NOTREACHED*/
+	}
+d703 1
+a704 1
+		printf(" x = %3d  : y = %3d : l %d : r %d \r",mo_x,mo_y,mo_l,mo_r);
+a744 4
+	printf("\n何故このメッセージが出力されるか不思議ではありませんか？\n");
+	printf("わたしは不思議でしょーがありません．\n");
+	printf("おかげで夜も眠れませんよ．\n\n");
+	err_nandaka();
+d753 8
+d770 3
+a772 2
+	printf("\x1b[2J\x1b[>5h\x1b[>1h");
+	get_tama();
+d775 2
+a776 1
+	g_line(10,up   ,630,up+122,7,2);
+d779 7
+a787 1
+	calc_tamaichi(up);
+d800 2
+d814 14
+a827 4
+	g_line(15,1,1,7,6,0);	g_line(1,7,15,13,6,0);
+	g_line(15,13,28,7,6,0);	g_line(28,7,15,1,6,0);
+	g_paint(14,7,6,6);
+	g_line(1,7,28,7,0,0);
+d833 1
+@
+
+
+0.2
+log
+@マウスモードの形が整う
+@
+text
+@d12 1
+d21 1
+d29 1
+a29 1
+void	ojiisan(void);					/* チューター・モード */
+d33 10
+a45 1
+void	disp_soro(int suuji,int p);		/* 数値のそろばん表示 */
+d47 4
+a50 2
+int		chk_overflow(int *st,int *in,int cal_flag);
+										/* 桁あふれチェック */
+d56 2
+a57 2
+void	get_koma(void);					/* そろばんのコマ取得 */
+void	calc_komaichi(int up);			/* コマ描画位置計算 */
+d68 1
+a68 1
+static int	*koma;					/* コマgraphic */
+d72 3
+a74 3
+static int	x[30];			/* コマ描画位置（Ｘ座標）*/
+static int	y_u[2];			/* コマ描画位置（上コマ）*/
+static int	y_l[5];			/* コマ描画位置（下コマ）*/
+d108 1
+a108 1
+ ******* チューター・モード（デフォルト動作） ************************
+d112 6
+a117 1
+	printf("老人「まだ出来ておらんのぢゃ」");
+d119 1
+d122 2
+a123 4
+/*********************************************************************
+ ******* デンタク・モード ********************************************
+ ********************************************************************/
+void	dentak(void)
+d125 84
+a208 4
+	int		in[30],st[30];		/* 入力変数，そろばん変数 */
+	int		keta;				/* 入力変数の桁数 */
+	int		cal_flag;			/* 計算旗 */
+	int		ch,i;				/* 有象無象 */
+d210 97
+d313 39
+a351 8
+	for(i=0; i<=30; i++)
+		in[i] = st[i] = 0;
+	keta = 0;
+	cal_flag = ADD;
+	
+	disp_init(40);
+	disp_window();
+	printf("\x1b[15;4H　@　@ご破算でぇ～願いましてはぁ～～～　@　@");
+d353 75
+a427 91
+		ch = getch();
+		switch(ch){
+			case '0':
+				if(keta == 0)	break;
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				if(keta == 20)	break;
+				if(keta == 0){
+					printf("\x1b[15;4H");
+					printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+					printf("\x1b[19;36H　@　@　@　@");
+				}
+				keta++;
+				in[keta] = ch - '0';
+				disp_res(in,keta);
+				break;
+			
+			case 0x08:
+				if(keta == 0)	break;
+				keta--;
+				disp_res(in,keta);
+				break;
+			
+			case '+':
+				if(keta != 0)	break;
+				printf("\x1b[15;4H足しては");
+				printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+				printf("\x1b[19;36H　@　@　@　@　@");
+				cal_flag = ADD;
+				disp_res(in,keta);
+				break;
+			
+			case '-':
+				if(keta != 0)	break;
+				printf("\x1b[15;4H引いては");
+				printf("　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@　@");
+				printf("\x1b[19;36H　@　@　@　@　@");
+				cal_flag = SUB;
+				disp_res(in,keta);
+				break;
+			
+			case 0x0d:
+			case ' ':
+				if(keta == 0)	break;
+				seikika(in,keta);
+				if(chk_overflow(st,in,cal_flag) != OK){
+					printf("\x1b[15;4H　@　@　@　@");
+					printf("\x1b[17;4H\x1b[17m　@　@　@");
+					printf("桁あふれが起こりました．");
+					printf("　@　@　@　@　@\a\x1b[m");
+					keta = 0;
+					cal_flag = ADD;
+					break;
+				}
+				if(ch == 0x0d){
+					printf("\x1b[19;38H円なり");
+				} else {
+					printf("\x1b[19;38H円では");
+				}
+				printf("\x1b[15;4H　@　@　@　@");
+				if(cal_flag == ADD){
+					for(i=keta; i>0; i--)
+						add_soro(st,in[i],i);
+				} else {
+					for(i=keta; i>0; i--)
+						sub_soro(st,in[i],i);
+				}
+				cal_flag = ADD;
+				keta = 0;
+				break;
+			
+			case 0x1b:
+				printf("\x1b[15;4H　@　@ご破算でぇ～願いましてはぁ～～～　@　@");
+				printf("\x1b[19;38H　@　@　@");
+				keta = 0;
+				disp_res(in,keta);
+				for(i=20; i>0; i--){
+					st[i] = in[i] = 0;
+					disp_soro(0,i);
+				}
+				break;
+			
+			default:
+				break;
+d430 16
+a445 21
+	printf("僕はどうしてこんな所へ来てしまったのだろう……\n");
+	printf("不思議だ……\n\n\n\n");
+	printf("そしぃ～～てぇ～～ボクはとほ～～にぃ～くれる....\n\n\n");
+	err_nandaka();
+	/*NOTREACHED*/
+}
+
+/******* デンタク・ウインドウ *************************************/
+void	disp_window(void)
+{
+	int		i,j;		/* 有象無象 */
+	
+	/* input window */
+	g_line( 8,210,362,319,4,2);
+	g_line( 9,211,361,318,5,2);
+	g_line(10,212,360,317,1,2);
+	
+	g_line(23,274,343,274,0,0);
+	for(i=0; i<=20; i++){
+		j = 23 + (i * 16);
+		g_line(j,272,j,274,0,0);
+d448 4
+a451 17
+	/* kaisetu */
+	g_line(384,192,639,399,4,2);
+	g_line(385,193,638,398,5,2);
+	g_line(386,194,637,397,1,2);
+	printf("\x1b[14;50H【キー操作の説明】");
+	printf("\x1b[16;52H［０］～［９］ ： 数字入力");
+	printf("\x1b[18;52H ［ Ｂ  Ｓ ］  ： １字後退");
+	printf("\x1b[20;52H ［リターン］  ： ～円なり");
+	printf("\x1b[22;52H ［Ｅ Ｓ Ｃ］  ： ご 破 算");
+	printf("\x1b[24;52H ［ＳＴＯＰ］  ：  終　@了 ");
+}
+
+
+/******* 入力変数表示 ***********************************************/
+void	disp_res(int *in,int keta)
+{
+	int	i;			/* 有象無象 */
+d453 95
+a547 68
+	for(i=20; i>=keta; i--)
+		printf("\x1b[17;%dH　@",(42 - (i * 2)));
+	
+	for(i=keta; i>0; i--){
+		printf("\x1b[17;%dH",(42 - ((keta - i) * 2)));
+		putch(0x82);
+		putch(0x4f + in[i]);
+	}
+}
+
+/******* 数値のそろばん表示 *****************************************/
+void	disp_soro(int suuji,int p)
+{
+	if(suuji >= 5){
+		g_put(x[p],y_u[0],boh,leng,0);
+		g_put(x[p],y_u[1],koma,leng,0);
+		suuji -= 5;
+	} else {
+		g_put(x[p],y_u[0],koma,leng,0);
+		g_put(x[p],y_u[1],boh,leng,0);
+	}
+	g_put(x[p],y_l[0],koma,leng,0);
+	g_put(x[p],y_l[1],koma,leng,0);
+	g_put(x[p],y_l[2],koma,leng,0);
+	g_put(x[p],y_l[3],koma,leng,0);
+	g_put(x[p],y_l[4],koma,leng,0);
+	g_put(x[p],y_l[suuji],boh,leng,0);
+}
+
+/******* 入力数値の正規化 *******************************************/
+void	seikika(int *in,int keta)
+{
+	int		i,j;		/* 有象無象 */
+	
+	for(i=keta+1; i<=20; i++)
+		in[i] = 0;
+	
+	if(keta == 0)
+		return;
+	
+	for(i=1; i<=(int)((keta/2)+1); i++){
+		j = in[i];
+		in[i] = in[keta - i + 1];
+		in[keta - i + 1] = j;
+	}
+}
+
+/******* 桁あふれチェック *******************************************/
+int	chk_overflow(int *st,int *in,int cal_flag)
+{
+	int		i;							/* 有象無象 */
+	static int		stl[30];			/* 局所用配列 */
+	
+	for(i=0; i<=20; i++)
+		stl[i] = st[i];
+	stl[21] = 0;
+	
+	if(cal_flag == ADD){
+		for(i=1; i<=20; i++){
+			stl[i] += in[i];
+			if(stl[i] >= 10){
+				stl[i+1] += 1;
+			}
+		}
+		if(stl[21] != 0){
+			return NO;
+		} else {
+			return OK;
+d550 3
+a552 16
+	if(cal_flag == SUB){
+		for(i=1; i<=20; i++){
+			stl[i] -= in[i];
+			if(stl[i] < 0){
+				stl[i+1] -= 1;
+			}
+		}
+		if(stl[21] != 0){
+			return NO;
+		} else {
+			return OK;
+		}
+	}
+	printf("え？どうして？\n\n\n");
+	printf("ここはどこ？　@わたしはだぁれ？\n");
+	printf("わたし，どうしてこんなところにいるのかしら？\n\n\n");
+d557 73
+a629 8
+/******* 指定桁の足し算 *********************************************/
+void	add_soro(int *st,int in,int p)
+{
+	st[p] += in;
+	if(st[p] >= 10){
+		st[p] -= 10;
+		disp_soro(st[p],p);
+		add_soro(st,1,p+1);
+d631 14
+a644 25
+		disp_soro(st[p],p);
+	}
+	return;
+}
+
+/******* 指定桁の引き算 *********************************************/
+void	sub_soro(int *st,int in,int p)
+{
+	st[p] -= in;
+	if(st[p] < 0){
+		st[p] += 10;
+		disp_soro(st[p],p);
+		sub_soro(st,1,p+1);
+	} else {
+		disp_soro(st[p],p);
+	}
+	return;
+}
+
+/*********************************************************************
+ ******* マウス・モード **********************************************
+ ********************************************************************/
+void	mouse(void)
+{
+	int		mo_x,mo_y,mo_l,mo_r;		/* マウス位置およびボタン状況 */
+d646 35
+a680 60
+	
+	if(mo_check() == NO){
+		printf("マウスモードはマウスドライバを組み込んでから実行してね．\n");
+		exit(0);
+	}
+	
+	/* シグナルの処理 */
+	if(signal(SIGINT,quit) == (int(*)()) -1){
+		err_signal();
+		/*NOTREACHED*/
+	}
+	disp_init(100);
+	mo_disp();
+	mo_l = mo_r = 0;
+	for(;;){
+		mo_ichi(&mo_x,&mo_y,&mo_l,&mo_r);
+		printf(" x = %3d  : y = %3d : l %d : r %d \r",mo_x,mo_y,mo_l,mo_r);
+		if((mo_l == 0) && (mo_r == 0))		continue;
+		if((mo_y < 110) || (mo_y > 212))	continue;
+		mo_x = 20 - (int)((mo_x-20) / 30);
+		if((mo_x < 1) || (mo_x > 20))	continue;
+		if(mo_l == 1){
+			if(mo_y < 138){
+				mo_erase();
+				mo_y = (int)((mo_y - 110) / 14);
+				for(i=0; i<2; i++){
+					if(i == mo_y)
+						g_put(x[mo_x],y_u[i],boh,leng,0);
+					else
+						g_put(x[mo_x],y_u[i],koma,leng,0);
+				}
+				mo_disp();
+			}
+			if(mo_y > 143){
+				mo_erase();
+				mo_y = (int)((mo_y - 143) / 14);
+				for(i=0; i<5; i++){
+					if(i == mo_y)
+						g_put(x[mo_x],y_l[i],boh,leng,0);
+					else
+						g_put(x[mo_x],y_l[i],koma,leng,0);
+				}
+				mo_disp();
+			}
+			continue;
+		}
+		if(mo_r == 1){
+			mo_erase();
+			g_put(x[mo_x],y_u[0],koma,leng,0);
+			g_put(x[mo_x],y_u[1],boh,leng,0);
+			g_put(x[mo_x],y_l[0],boh,leng,0);
+			for(i=1; i<5; i++)
+				g_put(x[mo_x],y_l[i],koma,leng,0);
+			mo_disp();
+			continue;
+		}
+	}
+	printf("何故このメッセージが出力されるか不思議ではありませんか？\n");
+	printf("わたしは不思議でしょーがありません．\n");
+	printf("おかげで夜も眠れませんよ．\n");
+d685 27
+d714 1
+a714 1
+ ******* 汎用関数群 **************************************************
+d716 72
+d799 1
+a799 1
+	get_koma();
+d806 2
+a807 2
+	/* コマと棒 */
+	calc_komaichi(up);
+d809 1
+a809 1
+		g_put(x[i],y_u[0],koma,leng,0);
+d813 6
+a818 6
+			g_put(x[i],y_l[j],koma,leng,0);
+	}
+}
+
+/******* そろばんのコマイメージ取得 *********************************/
+void	get_koma(void)
+d824 2
+a825 2
+	koma = (int *)malloc(leng);
+	if(koma == NULL)
+d831 1
+a831 1
+	/* コマイメージ */
+d836 1
+a836 1
+	g_get(0,0,29,13,koma,leng);
+d845 2
+a846 2
+/******* コマ描画位置計算 *******************************************/
+void	calc_komaichi(int up)
+@
+
+
+0.1
+log
+@Initial revision
+@
+text
+@d13 3
+a15 2
+
+#define		ADD		0			/* 計算旗用 */
+d36 1
+a36 1
+int		chk_overflow(int *st,int *in,int keta,int cal_flag);
+d50 1
+a50 1
+void	err_nandaka(void);				/* なんだか */
+d131 1
+d180 1
+a180 1
+				if(chk_overflow(st,in,keta,cal_flag) != OK){
+d310 1
+a310 1
+int	chk_overflow(int *st,int *in,int keta,int cal_flag)
+d385 66
+a450 3
+	printf("MOUSE mode not yet ......");
+	exit(0);
+}
+d529 2
+d533 1
+a533 1
+	printf("\nTNX USING \"soro.exe\"\n");
+@

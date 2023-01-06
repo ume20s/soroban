@@ -1,0 +1,11 @@
+soro.obj	:	soro.c g_lio.h mouse.h
+	cl /c /AS /W3 /Ox soro.c
+
+g_lio.obj	:	g_lio.c
+	cl /c /AS /W3 /Ox g_lio.c | tee g_lio.err
+
+mouse.obj	:	mouse.c
+	cl /c /AS /W3 /Ox mouse.c | tee mouse.err
+
+soro.exe	:	soro.obj g_lio.obj mouse.obj
+	link soro+g_lio+mouse;
